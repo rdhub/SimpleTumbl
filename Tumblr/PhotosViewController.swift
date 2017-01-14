@@ -9,14 +9,32 @@
 import UIKit
 import AFNetworking
 
-class PhotosViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+class PhotosViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIScrollViewDelegate {
 
     var posts: [NSDictionary] = []
+    var isMoreDataLoading = false
+    var loadingMoreView:InfiniteScrollActivityView?
     
     @IBOutlet weak var tableView: UITableView!
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        let frame = CGRect(x: 0, y: tableView.contentSize.height, width: tableView.bounds.size.width, height: InfiniteScrollActivityView.defaultHeight)
+        loadingMoreView = InfiniteScrollActivityView(frame: frame)
+        loadingMoreView!.isHidden = true
+        tableView.addSubview(loadingMoreView!)
+        
+        var insets = tableView.contentInset;
+        insets.bottom += InfiniteScrollActivityView.defaultHeight;
+        tableView.contentInset = insets
+        
+        
+        // Initialize a UIRefreshControl
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(refreshControlAction(refreshControl:)), for: UIControlEvents.valueChanged)
+        // add refresh control to table view
+        tableView.insertSubview(refreshControl, at: 0)
+        
         tableView.dataSource = self
         tableView.delegate = self
         tableView.rowHeight = 240
@@ -87,13 +105,125 @@ class PhotosViewController: UIViewController, UITableViewDataSource, UITableView
         return cell
     }
     
+    // Makes a network request to get updated data
+    // Updates the tableView with the new data
+    // Hides the RefreshControl
+    func refreshControlAction(refreshControl: UIRefreshControl) {
+        
+        // ... Create the NSURLRequest (myRequest) ...
+        let url = URL(string:"https://api.tumblr.com/v2/blog/humansofnewyork.tumblr.com/posts/photo?api_key=Q6vHoaVm5L1u2ZAW1fqv3Jw48gFzYVg9P0vH0VHl3GVy6quoGV")
+        let request = URLRequest(url: url!)
+        // Configure session so that completion handler is executed on main UI thread
+        let session = URLSession(
+            configuration: URLSessionConfiguration.default,
+            delegate:nil,
+            delegateQueue:OperationQueue.main
+        )
+        
+        let task : URLSessionDataTask = session.dataTask(
+            with: request as URLRequest,
+            completionHandler: { (data, response, error) in
+                if let data = data {
+                    if let responseDictionary = try! JSONSerialization.jsonObject(
+                        with: data, options:[]) as? NSDictionary {
+                        // ... Use the new data to update the data source ...
+                        //print("responseDictionary: \(responseDictionary)")
+                        
+                        // Recall there are two fields in the response dictionary, 'meta' and 'response'.
+                        // This is how we get the 'response' field
+                        let responseFieldDictionary = responseDictionary["response"] as! NSDictionary
+                        
+                        // This is where you will store the returned array of posts in your posts property
+                        // self.feeds = responseFieldDictionary["posts"] as! [NSDictionary]
+                        self.posts = responseFieldDictionary["posts"] as! [NSDictionary]
+                        
+                        // Reload the tableView now that there is new data
+                        self.tableView.reloadData()
+                        
+                        // Tell the refreshControl to stop spinning
+                        refreshControl.endRefreshing()
+                    }
+                }
+        });
+        task.resume()
+
+    }
+    
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Handle scroll behavior here
+        if(!isMoreDataLoading) {
+            
+            // Calculate the position of one screen length before the bottom of the results
+            let scrollViewContentHeight = tableView.contentSize.height
+            let scrollOffsetThreshold = scrollViewContentHeight - tableView.bounds.size.height
+            
+            // When the user has scrolled past the threshold, start requesting
+            if(scrollView.contentOffset.y > scrollOffsetThreshold && tableView.isDragging) {
+                isMoreDataLoading = true
+                
+                // Update position of loadingMoreView, and start loading indicator
+                let frame = CGRect(x: 0, y: tableView.contentSize.height, width: tableView.bounds.size.width, height: InfiniteScrollActivityView.defaultHeight)
+                loadingMoreView?.frame = frame
+                loadingMoreView!.startAnimating()
+                
+                // ... Code to load more results ...
+                loadMoreData()
+            }
+        }
+        
+    }
+    
+    func loadMoreData() {
+        
+        // ... Create the NSURLRequest (myRequest) ...
+        let url = URL(string:"https://api.tumblr.com/v2/blog/humansofnewyork.tumblr.com/posts/photo?api_key=Q6vHoaVm5L1u2ZAW1fqv3Jw48gFzYVg9P0vH0VHl3GVy6quoGV")
+        let request = URLRequest(url: url!)
+        // Configure session so that completion handler is executed on main UI thread
+        let session = URLSession(
+            configuration: URLSessionConfiguration.default,
+            delegate:nil,
+            delegateQueue:OperationQueue.main
+        )
+        
+        let task : URLSessionDataTask = session.dataTask(
+            with: request as URLRequest,
+            completionHandler: { (data, response, error) in
+                if let data = data {
+                    if let responseDictionary = try! JSONSerialization.jsonObject(
+                        with: data, options:[]) as? NSDictionary {
+                        // Update flag
+                        self.isMoreDataLoading = false
+                        
+                        // Stop the loading indicator
+                        self.loadingMoreView!.stopAnimating()
+                        
+                        // ... Use the new data to update the data source ...
+                        //print("responseDictionary: \(responseDictionary)")
+                        
+                        // Recall there are two fields in the response dictionary, 'meta' and 'response'.
+                        // This is how we get the 'response' field
+                        let responseFieldDictionary = responseDictionary["response"] as! NSDictionary
+                        
+                        // This is where you will store the returned array of posts in your posts property
+                        // self.feeds = responseFieldDictionary["posts"] as! [NSDictionary]
+                        self.posts = responseFieldDictionary["posts"] as! [NSDictionary]
+                        
+                        // Reload the tableView now that there is new data
+                        self.tableView.reloadData()
+                        
+                        
+                    }
+                }
+        });
+        task.resume()
+    }
     // MARK: - Navigation
 
     // In a storyboard-based application, you will often want to do a little preparation before navigation
     override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
         // Get the new view controller using segue.destinationViewController.
         // Pass the selected object to the new view controller.
-        print("abcalkfn")
+        
         //var vc = segue.destination as! PhotoDetailsViewController
         //var indexPath = tableView.indexPath(for: sender as! UITableViewCell)
         
